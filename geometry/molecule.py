@@ -21,6 +21,9 @@ from my_elements import tbl as el_tbl
 import scipy.constants as sc
 
 
+br = sc.physical_constants['Bohr radius'][0]
+
+
 @jit
 def _tens_fo(masses, coords, ax1, ax2):
     arr = np.empty(coords.shape)
@@ -51,7 +54,7 @@ def _zvals_typecheck(zvals):
     if type(zvals[0]) == float:
         zvals = [int(z) for z in zvals]
     elif type(zvals[0]) == str:
-        if any(z.isdigit() for z in zvals):
+        if any(chars.isdigit() for chars in zvals[0]):
             zvals = [int(float(z)) for z in zvals]
         else:
             zvals = [el_tbl[el_tbl.symbol == sym].atomicNumber.iloc[0] for sym in zvals]
@@ -66,8 +69,8 @@ def _xyz_input(txt_file, comment_line=0):
         for i, x in enumerate(coords):
             line = lines[i+1+comment_line].split()
             zvals.append(line[0])
+            x[:] = list(map(float, line[1:4]))
         zvals = _zvals_typecheck(zvals)
-        x[:] = list(map(float, line[1:4]))
     return natom, zvals, coords
 
 
@@ -82,6 +85,8 @@ def _dist_rep(self):
 class Molecule(object):
 
     """
+    Molecule class
+
     A simple Molecule class for computations, including calculations of bond lengths,
     bond angles, out-of-plane angles and dihedral angles. Also supports re-centering the
     coordinate system to the center-of-mass (translation). Calculates the principal moments
@@ -95,12 +100,15 @@ class Molecule(object):
 
     or
 
-    h20 = Molecule.from_txt('./h2o_geom.txt')
+    h20 = Molecule.from_txt('./h2o.txt')
 
     Use the .rep attribute to access a dataframe containg the atoms, their z-value as well as their
     cartesian coordinates.
 
+    The distances between connected atoms are given in the form of a dataframe throught the
+    .dist_rep attribute. The distance matrix can be accessed through the .dist_matrix attribute.
 
+    Bond angles can be displayed through the .bond_angles() method, which returns a dataframe.
 
     Symmetry TBD.
     """
@@ -114,8 +122,11 @@ class Molecule(object):
         self.rep = pd.DataFrame({'Sym': [el_tbl[el_tbl.atomicNumber == z].symbol.iloc[0] for z in zvals] , 'Z': zvals, 'x': coords[:,0], 'y': coords[:,1], 'z': coords[:,2]})
         self.dist_matrix = np.sum((coords[None,:] - coords[:, None])**2, -1)**0.5
         self.dist_rep = _dist_rep(self)
-        self.bond_cond = (self.dist_matrix < 3) & (self.dist_matrix > 0)
+        self._bond_cond = (self.dist_matrix < 3) & (self.dist_matrix > 0)
 
+
+    def __repr__(self):
+        return "Molecule with following input:\n\n" + self.rep.to_string()
 
     @classmethod
     def from_txt(class_object, txt_file):
@@ -144,7 +155,7 @@ class Molecule(object):
 
 
     def bonds(self):
-        return list({tuple(sorted(pair)) for pair in zip(np.where(self.bond_cond)[0], np.where(self.bond_cond)[1])})
+        return list({tuple(sorted(pair)) for pair in zip(np.where(self._bond_cond)[0], np.where(self._bond_cond)[1])})
 
 
     def bond_counts(self):
@@ -254,6 +265,8 @@ class Molecule(object):
 
 
     def tort_angles(self):
+        if self.natom <= 3:
+            raise ValueError('The number of atoms in the molecule is not sufficient to calculate any tortion angles')
         tort_angls = pd.DataFrame()
         for mb, bond_list in self.possible_tortion_angles().items():
             for bond1 in bond_list[0]:
@@ -304,7 +317,8 @@ class Molecule(object):
 
 
     def moment2const(self, I):
-        br = sc.physical_constants['Bohr radius'][0]
+        # br = sc.physical_constants['Bohr radius'][0]
+        br = 5.2917721067e-11
         return sc.Planck / (8 * np.pi**2 * br**2 * sc.atomic_mass * I)
 
     def rot_consts(self):
